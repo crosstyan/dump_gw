@@ -37,10 +37,12 @@ class AppState(TypedDict):
     client: MqttClient
     message_queue: MemoryObjectReceiveStream[MqttMessage]
     task_group: TaskGroup
+    history: dict[str, AwkwardArray]
 
 
 MQTT_BROKER: Final[str] = "192.168.2.189"
 MQTT_BROKER_PORT: Final[int] = 1883
+MAX_LENGTH = 600
 TOPIC: Final[str] = "GwData"
 NDArray = np.ndarray
 
@@ -82,6 +84,7 @@ def resource(params: Any = None):
         "client": unwrap(client),
         "message_queue": rx,
         "task_group": unwrap(tg),
+        "history": {},
     }
     return state
 
@@ -165,9 +168,7 @@ def payload_to_hr(payload: bytes) -> int:
 def main():
     state = resource()
     logger.info("Resource created")
-    history: dict[str, AwkwardArray] = {}
-
-    MAX_LENGTH = 500
+    history = state["history"]
 
     def push_new_message(message: GwMessage):
         dms = get_device_data(message)
@@ -193,9 +194,14 @@ def main():
         ak.to_parquet([history], filename)
         logger.info("Export to {}", filename)
 
-    export_btn = st.button(
+    def on_clear():
+        history.clear()
+        logger.info("History cleared")
+
+    st.button(
         "Export", help="Export the current data to a parquet file", on_click=on_export
     )
+    st.button("Clear", help="Clear the current data", on_click=on_clear)
     pannel = st.empty()
     while True:
         try:
