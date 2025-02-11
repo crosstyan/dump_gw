@@ -39,7 +39,8 @@ class AppState(TypedDict):
     history: deque[AlgoReport]
 
 
-UDP_LISTEN_PORT: Final[int] = 50_000
+UDP_SERVER_HOST: Final[str] = "localhost"
+UDP_SERVER_PORT: Final[int] = 50_000
 MAX_LENGTH = 600
 NDArray = np.ndarray
 
@@ -65,7 +66,7 @@ def resource(params: Any = None):
         set_ev.set()
         async with tg:
             async with await create_udp_socket(
-                local_port=UDP_LISTEN_PORT, reuse_port=True
+                local_host=UDP_SERVER_HOST, local_port=UDP_SERVER_PORT, reuse_port=True
             ) as udp:
                 async for packet, _ in udp:
                     await tx.send(packet)
@@ -105,6 +106,8 @@ def main():
             message = state["message_queue"].receive_nowait()
         except anyio.WouldBlock:
             continue
+        report = AlgoReport.unmarshal(message)
+        logger.info("Report: {}", report)
         # TODO: plot
         # fig = go.Figure(scatters)
         # pannel.plotly_chart(fig)
