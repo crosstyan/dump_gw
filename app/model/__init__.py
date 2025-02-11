@@ -67,21 +67,25 @@ class AlgoModelData(BaseModel):
     _FORMAT: ClassVar[LiteralString] = "<BHBHBBHBHBBBBBBBI"
 
     @computed_field
+    @property
     def hr_f(self) -> float:
         """Heart rate in beats per minute"""
         return self.hr / 10.0
 
     @computed_field
+    @property
     def spo2_f(self) -> float:
         """SpO2 percentage"""
         return self.spo2 / 10.0
 
     @computed_field
+    @property
     def r_f(self) -> float:
         """SpO2 R value"""
         return self.r / 1000.0
 
     @computed_field
+    @property
     def rr_f(self) -> float:
         """RR interval in milliseconds"""
         return self.rr / 10.0
