@@ -24,11 +24,13 @@ from anyio.streams.memory import MemoryObjectSendStream, MemoryObjectReceiveStre
 from threading import Thread
 from time import sleep
 from pydantic import BaseModel, computed_field
-from datetime import datetime
+from datetime import datetime, timedelta
 import awkward as ak
 from awkward import Array as AwkwardArray, Record as AwkwardRecord
 from app.model import AlgoReport
+from app.utils import Instant
 from collections import deque
+from dataclasses import dataclass
 
 
 class AppHistory(TypedDict):
@@ -38,6 +40,7 @@ class AppHistory(TypedDict):
     accel_x_data: deque[int]
     accel_y_data: deque[int]
     accel_z_data: deque[int]
+    pd_data: deque[int]
 
 
 # https://handmadesoftware.medium.com/streamlit-asyncio-and-mongodb-f85f77aea825
@@ -46,6 +49,7 @@ class AppState(TypedDict):
     message_queue: MemoryObjectReceiveStream[bytes]
     task_group: TaskGroup
     history: AppHistory
+    refresh_inst: Instant
 
 
 UDP_SERVER_HOST: Final[str] = "localhost"
@@ -96,7 +100,9 @@ def resource(params: Any = None):
             "accel_x_data": deque(maxlen=MAX_LENGTH),
             "accel_y_data": deque(maxlen=MAX_LENGTH),
             "accel_z_data": deque(maxlen=MAX_LENGTH),
+            "pd_data": deque(maxlen=MAX_LENGTH),
         },
+        "refresh_inst": Instant(),
     }
     logger.info("Resource created")
     return state
@@ -140,32 +146,35 @@ def main():
             )
 
     placeholder = st.empty()
+    md_placeholder = st.empty()
 
     while True:
         try:
             message = state["message_queue"].receive_nowait()
         except anyio.WouldBlock:
             continue
+        report = AlgoReport.unmarshal(message)
+        if state["refresh_inst"].mut_every_ms(500):
+            md_placeholder.markdown(
+                f"""
+            - HR: {report.data.hr_f}bpm
+            - HR CONF: {report.data.hr_conf}%
+            - ACTIVITY: {report.data.activity_class.name}
+            - SCD: {report.data.scd_contact_state.name}
+                        """
+            )
         with placeholder.container():
-            report = AlgoReport.unmarshal(message)
             history["timescape"].append(datetime.now())
             history["hr_data"].append(report.data.hr_f)
             history["hr_conf"].append(report.data.hr_conf)
             history["accel_x_data"].append(report.accel_x)
             history["accel_y_data"].append(report.accel_y)
             history["accel_z_data"].append(report.accel_z)
-
-            # with st.container():
-            #     c1, c2 = st.columns(2)
-            #     with c1:
-            #         c1.write(f"HR: {report.data.hr_f}")
-            #     with c2:
-            #         c2.write(f"HR Confidence: {report.data.hr_conf}")
-
-            fig_hr, fig_accel = st.tabs(["Heart Rate", "Accelerometer"])
+            history["pd_data"].append(report.led_2)
+            fig_hr, fig_accel, fig_pd = st.tabs(["Heart Rate", "Accelerometer", "PD"])
 
             with fig_hr:
-                fig_hr.plotly_chart(
+                st.plotly_chart(
                     go.Figure(
                         data=[
                             go.Scatter(
@@ -184,7 +193,7 @@ def main():
                     )
                 )
             with fig_accel:
-                fig_accel.plotly_chart(
+                st.plotly_chart(
                     go.Figure(
                         data=[
                             go.Scatter(
@@ -205,6 +214,19 @@ def main():
                                 mode="lines",
                                 name="z",
                             ),
+                        ]
+                    )
+                )
+            with fig_pd:
+                st.plotly_chart(
+                    go.Figure(
+                        data=[
+                            go.Scatter(
+                                x=list(history["timescape"]),
+                                y=list(history["pd_data"]),
+                                mode="lines",
+                                name="PD",
+                            )
                         ]
                     )
                 )
