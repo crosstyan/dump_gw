@@ -6,11 +6,11 @@ from typing import Final, Optional
 from loguru import logger
 from anyio import create_udp_socket, create_connected_udp_socket
 
-DEVICE_NAME: Final[str] = "MAX-BAND"
+DEVICE_NAME: Final[str] = "MAX-HUB"
 UDP_SERVER_HOST: Final[str] = "localhost"
 UDP_SERVER_PORT: Final[int] = 50_000
 BLE_HR_SERVICE_UUID: Final[str] = "180D"
-BLE_HR_CHARACTERISTIC_RAW_UUID: Final[str] = "c4f5233d-430a-4ca1-bb60-1d896c10e807"
+BLE_HR_CHARACTERISTIC_RAW_UUID: Final[str] = "ff241160-8a02-4626-b499-b1572d2b5a29"
 
 
 async def main():

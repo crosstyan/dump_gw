@@ -27,7 +27,7 @@ from pydantic import BaseModel, computed_field
 from datetime import datetime, timedelta
 import awkward as ak
 from awkward import Array as AwkwardArray, Record as AwkwardRecord
-from app.model import AlgoReport
+from app.model import AlgoReport, HrPacket, hr_confidence_to_num
 from app.utils import Instant
 from collections import deque
 from dataclasses import dataclass
@@ -36,7 +36,7 @@ from dataclasses import dataclass
 class AppHistory(TypedDict):
     timescape: deque[datetime]
     hr_data: deque[float]
-    hr_conf: deque[int]  # in %
+    hr_conf: deque[float]  # in %
     accel_x_data: deque[int]
     accel_y_data: deque[int]
     accel_z_data: deque[int]
@@ -153,66 +153,31 @@ def main():
             message = state["message_queue"].receive_nowait()
         except anyio.WouldBlock:
             continue
-        report = AlgoReport.unmarshal(message)
-        if state["refresh_inst"].mut_every_ms(500):
-            md_placeholder.markdown(
-                f"""
-            - HR: {report.data.hr_f}bpm
-            - HR CONF: {report.data.hr_conf}%
-            - ACTIVITY: {report.data.activity_class.name}
-            - SCD: {report.data.scd_contact_state.name}
-                        """
-            )
+        try:
+            packet = HrPacket.unmarshal(message)
+        except ValueError as e:
+            logger.error(f"bad packet: {e}")
+            continue
+
         with placeholder.container():
-            history["timescape"].append(datetime.now())
-            history["hr_data"].append(report.data.hr_f)
-            history["hr_conf"].append(report.data.hr_conf)
-            history["accel_x_data"].append(report.accel_x)
-            history["accel_y_data"].append(report.accel_y)
-            history["accel_z_data"].append(report.accel_z)
-            history["pd_data"].append(report.led_2)
-            fig_hr, fig_accel, fig_pd = st.tabs(["Heart Rate", "Accelerometer", "PD"])
+            history["hr_data"].append(packet.hr)
+            history["hr_conf"].append(hr_confidence_to_num(packet.status.hr_confidence))
+            history["pd_data"].extend(packet.raw_data)
+            fig_hr, fig_pd = st.tabs(["Heart Rate", "PD"])
 
             with fig_hr:
                 st.plotly_chart(
                     go.Figure(
                         data=[
                             go.Scatter(
-                                x=list(history["timescape"]),
                                 y=list(history["hr_data"]),
                                 mode="lines",
                                 name="HR",
                             ),
                             go.Scatter(
-                                x=list(history["timescape"]),
                                 y=list(history["hr_conf"]),
                                 mode="lines",
                                 name="HR Confidence",
-                            ),
-                        ]
-                    )
-                )
-            with fig_accel:
-                st.plotly_chart(
-                    go.Figure(
-                        data=[
-                            go.Scatter(
-                                x=list(history["timescape"]),
-                                y=list(history["accel_x_data"]),
-                                mode="lines",
-                                name="x",
-                            ),
-                            go.Scatter(
-                                x=list(history["timescape"]),
-                                y=list(history["accel_y_data"]),
-                                mode="lines",
-                                name="y",
-                            ),
-                            go.Scatter(
-                                x=list(history["timescape"]),
-                                y=list(history["accel_z_data"]),
-                                mode="lines",
-                                name="z",
                             ),
                         ]
                     )
@@ -222,7 +187,6 @@ def main():
                     go.Figure(
                         data=[
                             go.Scatter(
-                                x=list(history["timescape"]),
                                 y=list(history["pd_data"]),
                                 mode="lines",
                                 name="PD",

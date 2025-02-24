@@ -138,3 +138,76 @@ class AlgoReport(BaseModel):
             accel_z=accel_z,
             data=data,
         )
+
+
+class HrConfidence(IntEnum):
+    """Equivalent to max::HR_CONFIDENCE"""
+
+    ZERO = 0
+    LOW = 1
+    MEDIUM = 2
+    HIGH = 3
+
+
+def hr_confidence_to_num(hr_confidence: HrConfidence) -> float:
+    if hr_confidence == HrConfidence.ZERO:
+        return 0
+    elif hr_confidence == HrConfidence.LOW:
+        return 25
+    elif hr_confidence == HrConfidence.MEDIUM:
+        return 62.5
+    elif hr_confidence == HrConfidence.HIGH:
+        return 100
+    else:
+        raise ValueError(f"Invalid HR confidence: {hr_confidence}")
+
+
+@dataclass
+class HrStatusFlags:
+    # 2 bits
+    hr_confidence: HrConfidence
+    # 1 bit
+    is_active: bool
+    # 1 bit
+    is_on_skin: bool
+    # 4 bits
+    battery_level: int
+
+    @staticmethod
+    def unmarshal(data: bytes) -> "HrStatusFlags":
+        val = data[0]
+        return HrStatusFlags(
+            hr_confidence=HrConfidence(val & 0b11),
+            is_active=(val & 0b100) != 0,
+            is_on_skin=(val & 0b1000) != 0,
+            battery_level=val >> 4,
+        )
+
+
+@dataclass
+class HrPacket:
+    # 8 bits
+    status: HrStatusFlags
+    # 8 bits
+    id: int
+    # 8 bits
+    hr: int
+    # 8 bits (as `n`) + n x 24 bits
+    raw_data: list[int]
+
+    @staticmethod
+    def unmarshal(data: bytes) -> "HrPacket":
+        status = HrStatusFlags.unmarshal(data[0:1])
+        id = data[1]
+        hr = data[2]
+        raw_data_count = data[3]
+        raw_data_payload = data[4:]
+        if len(raw_data_payload) != (expected_raw_data_len := raw_data_count * 3):
+            raise ValueError(
+                f"Invalid raw data payload length: {len(raw_data_payload)}, expected {expected_raw_data_len}"
+            )
+        raw_data = [
+            int.from_bytes(raw_data_payload[i : i + 3], "little")
+            for i in range(0, expected_raw_data_len, 3)
+        ]
+        return HrPacket(status, id, hr, raw_data)
